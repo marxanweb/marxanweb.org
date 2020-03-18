@@ -13,8 +13,10 @@ import { isNumber} from './genericFunctions.js';
 
 //CONSTANTS
 let TORNADO_PATH = "/marxan-server/";
-let GCP_PROJECT = "marxan-web";
-let GCP_ZONE = "us-central1-a";
+// let GCP_PROJECT = "marxan-web";
+// let GCP_ZONE = "us-central1-a";
+let GCP_PROJECT = "geeimageserver";
+let GCP_ZONE = "europe-west6-a";
 
 class App extends React.Component {
   constructor(props) {
@@ -113,6 +115,8 @@ class App extends React.Component {
   pollMarxanServer(server) {
     //get the corresponding marxanserver instance
     let marxanserver = this.getMarxanServerForVM(server.name);
+    //set the offline property to undefined - this will show the loader
+    this.updateMarxanServerStatus(marxanserver, undefined);
     //poll the server to see if it is ready
     this.timer = setInterval(() => {
       this.getServerCapabilities(marxanserver).then((server) => {
@@ -120,7 +124,7 @@ class App extends React.Component {
         if (!server.offline) {
           this.clearMarxanPolling();
           //update the state
-          this.updateMarxanServerStatus(server, false);
+          this.updateMarxanServerStatus(marxanserver, false);
         }
       });
     }, 1000);
@@ -166,6 +170,7 @@ class App extends React.Component {
   configureServer(server){
     //get the current machine type
     let machineType = this.getMachineType(server);
+    machineType = (machineType) ? machineType : {name:''};
     //show the machine types dialog
     this.setState({machineTypesDialogOpen: true, machineType: machineType.name, clickedServer: server});
   }
@@ -224,7 +229,7 @@ class App extends React.Component {
     }
   }
   renderStatus(row) {
-    return (row.original.offline) ? "Offline" : "Available";
+    return (row.original.offline === undefined) ? "Starting" : (row.original.offline) ? "Offline" : "Available";
   }
   renderCPUs(row) {
     //get the VM machine for this server
@@ -311,7 +316,7 @@ class App extends React.Component {
       { Header: 'Space', accessor: 'disk_space', width: 50, headerStyle: { 'textAlign': 'left' } }
     ];
     //add the controls column to the table if the user is logged in
-    if (this.state.loggedIn) tableCols.unshift({ Header: '', accessor: 'controlsEnabled', width: 30, headerStyle: { 'textAlign': 'left' }, style: { borderRight: '0px' }, Cell: this.renderControls.bind(this) });
+    if (this.state.loggedIn) tableCols.unshift({ Header: 'VM', accessor: 'controlsEnabled', width: 30, headerStyle: { 'textAlign': 'left' }, style: { borderRight: '0px' }, Cell: this.renderControls.bind(this) });
     return (
       <div>
         <div>Marxan Web</div>

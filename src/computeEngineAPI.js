@@ -17,7 +17,8 @@ module.exports = {
 	loadOAuth2Client: function() {
 		return new Promise((resolve, reject) => {
 			gapi.load("client:auth2", function() {
-				gapi.auth2.init({ client_id: "956491209288-m1fj9h3udhiviuj0hdvajrp8o7pn13g8.apps.googleusercontent.com" });
+				gapi.auth2.init({ client_id: "525442053161-ua4flmb201fv8m2tek8ijhuobohur4vs.apps.googleusercontent.com" }); //for a.cottam
+				// gapi.auth2.init({ client_id: "956491209288-m1fj9h3udhiviuj0hdvajrp8o7pn13g8.apps.googleusercontent.com" }); //for marxancloud
 				resolve();
 			});
 		});
