@@ -17,8 +17,8 @@ module.exports = {
 	loadOAuth2Client: function() {
 		return new Promise((resolve, reject) => {
 			gapi.load("client:auth2", function() {
-				gapi.auth2.init({ client_id: "525442053161-ua4flmb201fv8m2tek8ijhuobohur4vs.apps.googleusercontent.com" }); //for a.cottam
-				// gapi.auth2.init({ client_id: "956491209288-m1fj9h3udhiviuj0hdvajrp8o7pn13g8.apps.googleusercontent.com" }); //for marxancloud
+				// gapi.auth2.init({ client_id: "525442053161-ua4flmb201fv8m2tek8ijhuobohur4vs.apps.googleusercontent.com" }); //for a.cottam
+				gapi.auth2.init({ client_id: "956491209288-m1fj9h3udhiviuj0hdvajrp8o7pn13g8.apps.googleusercontent.com" }); //for marxancloud
 				resolve();
 			});
 		});
@@ -53,10 +53,36 @@ module.exports = {
 		});
 	},
 	//gets the machine type details for the machine type
-	getMachineTypesForProject: function(project, zone) {
+	getMachineTypesForProject: function(project, region, zone) {
 		return new Promise((resolve, reject) => {
 			gapi.client.compute.machineTypes.list({ "project": project, "zone": zone }).then((response) => {
-				resolve(response.result.items);
+				let machineTypes = response.result.items;
+				//not all machine types will be available - it will depend of whether you are on a free trial and other factors - but the quota can be retrieved
+				module.exports.getProjectRegion(project, region).then((projectData) => {
+					//get the CPU quota
+					let cpu_quota = projectData.quotas.filter(item=>item.metric==='CPUS')[0].limit;
+					//add an attribute to all the machine types
+					machineTypes = machineTypes.map(item=>{
+						return Object.assign(item, {available: item.guestCpus <= cpu_quota});
+					});
+					resolve(machineTypes);
+				});
+			}, (err) => reject(err));
+		});
+	},
+	//gets the project and its quotas
+	getProject: function(project) {
+		return new Promise((resolve, reject) => {
+			gapi.client.compute.projects.get({ "project": project }).then((response) => {
+				resolve(response.result);
+			}, (err) => reject(err));
+		});
+	},
+	//gets the project in the region and its quotas
+	getProjectRegion: function(project, region) {
+		return new Promise((resolve, reject) => {
+			gapi.client.compute.regions.get({ "project": project, "region": region }).then((response) => {
+				resolve(response.result);
 			}, (err) => reject(err));
 		});
 	},

@@ -5,23 +5,25 @@ import ReactTable from 'react-table';
 import ServerControls from './ServerControls';
 import CPUControl from './CPUControl';
 import RAMControl from './RAMControl';
-import MachineTypesDialog from './MachineTypesDialog';
+import StartDialog from './StartDialog';
 import 'react-table/react-table.css';
 import fetchJsonp from 'fetch-jsonp';
 import { login, getVMs, getVM, getMachineTypesForProject } from './computeEngineAPI.js';
-import { isNumber} from './genericFunctions.js';
+import { isNumber } from './genericFunctions.js';
 
 //CONSTANTS
 let TORNADO_PATH = "/marxan-server/";
-// let GCP_PROJECT = "marxan-web";
-// let GCP_ZONE = "us-central1-a";
-let GCP_PROJECT = "geeimageserver";
-let GCP_ZONE = "europe-west6-a";
+let GCP_PROJECT = "marxan-web";
+let GCP_REGION = "us-central1";
+let GCP_ZONE = "us-central1-a";
+// let GCP_PROJECT = "geeimageserver";
+// let GCP_REGION = "europe-west6";
+// let GCP_ZONE = "europe-west6-a";
 
 class App extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { marxanServers: [], clickedServer: {}, loggedIn: false, vms: [], serversLoaded: false, machineTypes: [], machineTypesDialogOpen: false, machineType: '' };
+    this.state = { marxanServers: [], clickedServer: {}, loggedIn: false, vms: [], serversLoaded: false, machineTypes: [], startDialogOpen: false, machineType: '', timeout: 60, invalidLogin: false, failedToStartServer: false, failedToSetMachineType: false };
     this.initialiseServers(window.MARXAN_SERVERS);
   }
   _login() {
@@ -31,9 +33,11 @@ class App extends React.Component {
       //get the VMs
       this._getVMs();
       //get an array of the machine types available for the project
-      getMachineTypesForProject(GCP_PROJECT, GCP_ZONE).then((machineTypes)=>{
+      getMachineTypesForProject(GCP_PROJECT, GCP_REGION, GCP_ZONE).then((machineTypes) => {
         //filter the machine types for c2 types (compute-optimised) and n1 (general purpose)
-        machineTypes = machineTypes.filter(mt=>(mt.name.substr(0,3) === 'c2-'||mt.name.substr(0,3) === 'n1-'));
+        // machineTypes = machineTypes.filter(mt => (mt.name.substr(0, 3) === 'c2-' || mt.name.substr(0, 3) === 'n1-'));
+        //filter the machine types for available ones only
+        machineTypes = machineTypes.filter(mt => (mt.available));
         //sort by the description
         this.sortObjectArray(machineTypes, 'guestCpus');
         this.setState({ machineTypes: machineTypes });
@@ -41,7 +45,7 @@ class App extends React.Component {
     });
   }
   //gets a list of VMs for the project and zone
-  _getVMs(){
+  _getVMs() {
     //get the VMs
     getVMs(GCP_PROJECT, GCP_ZONE).then((_vms) => {
       this.setState({ vms: _vms });
@@ -61,6 +65,10 @@ class App extends React.Component {
         }
         //if the server is stopping then set the server as offline
         if (_vm.status === 'STOPPING') this.setOffline(server);
+        //if the server is stopping after a provisioninf status, then the start failed
+        if (this.vmConfig.status ==="PROVISIONING" && _vm.status === "STOPPING"){
+          this.setState({failedToStartServer: true});
+        }
         //update the state
         let _vms = this.state.vms;
         _vms.map(item => {
@@ -75,15 +83,16 @@ class App extends React.Component {
     });
   }
   //sorts an object array by the passed sort field
-  sortObjectArray(arr, sortField){
+  sortObjectArray(arr, sortField) {
     arr.sort((a, b) => {
-      if (isNumber(a[sortField])){
+      if (isNumber(a[sortField])) {
         if ((a[sortField] < b[sortField]))
           return -1;
         if (a[sortField] > b[sortField])
           return 1;
         return 0;
-      }else{
+      }
+      else {
         if ((a[sortField].toLowerCase() < b[sortField].toLowerCase()) || (a.type === "local"))
           return -1;
         if (a[sortField].toLowerCase() > b[sortField].toLowerCase())
@@ -120,16 +129,60 @@ class App extends React.Component {
     //poll the server to see if it is ready
     this.timer = setInterval(() => {
       this.getServerCapabilities(marxanserver).then((server) => {
-        //if the server is online then update state and stop polling
+        //if the server is online then update state, stop polling and set it to shutdown 
         if (!server.offline) {
           this.clearMarxanPolling();
           //update the state
           this.updateMarxanServerStatus(marxanserver, false);
+          //authenticate to the marxan-server
+          this.authenticateMS(marxanserver).then(()=>{
+            this.setupShutdown(marxanserver);
+          });
         }
       });
     }, 1000);
   }
-  clearMarxanPolling(){
+  //authenticates to the marxan server - if successful sets a cookie to be able to call shutdown
+  authenticateMS(marxanserver) {
+    return new Promise((resolve, reject) => {
+      fetchJsonp(marxanserver.endpoint + "validateUser?user=" + this.state.username + "&password=" + this.state.password).then((response) => {
+        return response.json();
+      }).then((json) => {
+        if (json.hasOwnProperty('error')) {
+          this.setState({ invalidLogin: true });
+          reject();
+        }
+        resolve();
+      }).catch((ex) => {
+        this.setState({ invalidLogin: true });
+        reject();
+      });
+    });
+  }
+  //calls shutdown on the marxan server
+  setupShutdown(marxanserver){
+    //get the time now
+    let d = new Date();
+    //get the shutdown time
+    let shutdowntime = new Date(d.getTime() + ((Number(this.state.timeout))*60000)).toString();
+    //update the marxan servers 
+    let _marxanservers = this.state.marxanServers;
+    _marxanservers.map(item => {
+      let _obj = (item.name === marxanserver.name) ? Object.assign(item, { shutdowntime: shutdowntime }) : item;
+      return _obj;
+    });
+    //set the state
+    this.setState({shutdown: shutdowntime, marxanServers: _marxanservers});
+    //set the shutdown timer
+    fetchJsonp(marxanserver.endpoint + "shutdown?delay=" + this.state.timeout, { timeout: 1000 }).then((response) => {
+      return response.json();
+    }).then((json) => {
+      console.log(json);
+    }).catch((ex) => {
+      console.log(ex);
+    });
+  }
+  clearMarxanPolling() {
     clearInterval(this.timer);
     this.timeout = undefined;
   }
@@ -167,38 +220,47 @@ class App extends React.Component {
     this.setState({ marxanServers: _marxanservers });
   }
   //prompts the user to select a machine type and then starts it
-  configureServer(server){
+  configureServer(server) {
     //get the current machine type
     let machineType = this.getMachineType(server);
-    machineType = (machineType) ? machineType : {name:''};
+    machineType = (machineType) ? machineType : { name: '' };
     //show the machine types dialog
-    this.setState({machineTypesDialogOpen: true, machineType: machineType.name, clickedServer: server});
+    this.setState({failedToStartServer: false, failedToSetMachineType: false, startDialogOpen: true, machineType: machineType.name, clickedServer: server});
   }
-  hideMachineTypesDialog(){
-    this.setState({machineTypesDialogOpen: false});
+  hideStartDialog() {
+    this.setState({ startDialogOpen: false });
   }
-  onChangeMachineType(event){
-   this.setState({machineType: event.target.value});
+  onChangeMachineType(event) {
+    this.setState({ machineType: event.target.value });
   }
   //sets the machine type to the passed value and starts the VM
-  setMachineType(){
+  setMachineType() {
     //setMachineType requires the full url - so get this from the machineTypes array
-    let _mt = this.state.machineTypes.filter(_mt=>(_mt.name === this.state.machineType));
-    if (_mt.length){
+    let _mt = this.state.machineTypes.filter(_mt => (_mt.name === this.state.machineType));
+    if (_mt.length) {
       let fullMachineType = _mt[0].selfLink;
-      return gapi.client.compute.instances.setMachineType({ "project": GCP_PROJECT, "zone": GCP_ZONE, 'instance': this.state.clickedServer.name, 'resource':{ 'machineType': fullMachineType }}).then((response) => {
-          //update the state with the new machine type
-          let _vms = this.state.vms;
-          _vms.map(item => {
-            let _obj = (item.name === this.state.clickedServer.name) ? Object.assign(item, { machineType: fullMachineType }) : item;
-            return _obj;
-          });
-          this.setState({ vms: _vms });
-          //start the VM
-          this.startVM(this.state.clickedServer);
-        },
-        function(err) { console.error("Execute error", err); });
+      return gapi.client.compute.instances.setMachineType({ "project": GCP_PROJECT, "zone": GCP_ZONE, 'instance': this.state.clickedServer.name, 'resource': { 'machineType': fullMachineType } }).then((response) => {
+        //update the state with the new machine type
+        let _vms = this.state.vms;
+        _vms.map(item => {
+          let _obj = (item.name === this.state.clickedServer.name) ? Object.assign(item, { machineType: fullMachineType }) : item;
+          return _obj;
+        });
+        this.setState({ vms: _vms});
+        //start the VM
+        this.startVM(this.state.clickedServer);
+      },((err)=>{ 
+        this.setState({failedToSetMachineType: true}); 
+        console.log(err);
+      }));
     }
+  }
+  //sets the timeout for how long the server will be running until it shuts down
+  setTimeout(minutes) {
+    this.setState({ timeout: minutes });
+  }
+  setUserPassword(username, password) {
+    this.setState({ username: username, password: password, invalidLogin: false });
   }
   //starts a VM
   startVM(server) {
@@ -246,8 +308,8 @@ class App extends React.Component {
     return <RAMControl machineType={machineType} marxanserver={row.original}/>;
   }
   //gets the machine type for the VM
-  getMachineType(vm){
-    let machineTypes = this.state.machineTypes.filter(item=>item.selfLink === vm.machineType);
+  getMachineType(vm) {
+    let machineTypes = this.state.machineTypes.filter(item => item.selfLink === vm.machineType);
     return (machineTypes.length) ? machineTypes[0] : null;
   }
   //initialises the servers by requesting their capabilities
@@ -312,11 +374,13 @@ class App extends React.Component {
       { Header: 'Host', accessor: 'host', width: 215, headerStyle: { 'textAlign': 'left' } },
       { Header: 'Description', accessor: 'description', headerStyle: { 'textAlign': 'left' } },
       { Header: 'CPUs', accessor: '', width: 50, headerStyle: { 'textAlign': 'left' }, Cell: this.renderCPUs.bind(this) },
-      { Header: 'RAM', accessor: 'ram', width: 50, headerStyle: { 'textAlign': 'left' }, Cell: this.renderRAM.bind(this)  },
+      { Header: 'RAM', accessor: 'ram', width: 50, headerStyle: { 'textAlign': 'left' }, Cell: this.renderRAM.bind(this) },
       { Header: 'Space', accessor: 'disk_space', width: 50, headerStyle: { 'textAlign': 'left' } }
     ];
     //add the controls column to the table if the user is logged in
     if (this.state.loggedIn) tableCols.unshift({ Header: 'VM', accessor: 'controlsEnabled', width: 30, headerStyle: { 'textAlign': 'left' }, style: { borderRight: '0px' }, Cell: this.renderControls.bind(this) });
+    //add the shutdown column if the user has started a vm with a shutdown
+    if (this.state.shutdown) tableCols.push({ Header: 'Shutdown at', accessor: 'shutdowntime', width: 162, headerStyle: { 'textAlign': 'left' }, style: { borderRight: '0px' }});
     return (
       <div>
         <div>Marxan Web</div>
@@ -329,8 +393,20 @@ class App extends React.Component {
             data={this.state.marxanServers}
             columns={tableCols}
       		/> 
+      		<div className={'invalidLogin'} style={{display: (this.state.invalidLogin) ? 'block' : 'none'}}>Invalid login credentials - unable to shutdown automatically. Please do it manually.</div>
+      		<div className={'invalidLogin'} style={{display: (this.state.failedToStartServer) ? 'block' : 'none'}}>Failed to start server. Stopping. Try fewer CPUs.</div>
+      		<div className={'invalidLogin'} style={{display: (this.state.failedToSetMachineType) ? 'block' : 'none'}}>Failed to set the machine type. Try a different one.</div>
     		</div>
-    		<MachineTypesDialog open={this.state.machineTypesDialogOpen} machineTypes={this.state.machineTypes} machineType={this.state.machineType} onChangeMachineType={this.onChangeMachineType.bind(this)} setMachineType={this.setMachineType.bind(this)} hideMachineTypesDialog={this.hideMachineTypesDialog.bind(this)}/>
+    		<StartDialog 
+    		  open={this.state.startDialogOpen} 
+    		  machineTypes={this.state.machineTypes} 
+    		  machineType={this.state.machineType} 
+    		  onChangeMachineType={this.onChangeMachineType.bind(this)} 
+    		  setMachineType={this.setMachineType.bind(this)} 
+    		  hideStartDialog={this.hideStartDialog.bind(this)} 
+    		  setTimeout={this.setTimeout.bind(this)} 
+    		  setUserPassword={this.setUserPassword.bind(this)}
+    		  marxanserverendpoint={this.state.marxanserverendpoint}/>
       </div>
     );
   }
