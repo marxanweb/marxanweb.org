@@ -178,7 +178,8 @@ class App extends React.Component {
       return response.json();
     }).then((json) => {
       if (json.hasOwnProperty('error')){
-        alert(json.error);
+        alert(json.error + '\nUnable to shutdown automatically. Please do it manually.');
+        this.setState({shutdown: ''});
       }
       console.log(json);
     }).catch((ex) => {
