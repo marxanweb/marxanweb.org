@@ -177,6 +177,9 @@ class App extends React.Component {
     fetchJsonp(marxanserver.endpoint + "shutdown?delay=" + this.state.timeout, { timeout: 1000 }).then((response) => {
       return response.json();
     }).then((json) => {
+      if (json.hasOwnProperty('error')){
+        alert(json.error);
+      }
       console.log(json);
     }).catch((ex) => {
       console.log(ex);
