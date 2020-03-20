@@ -1,3 +1,4 @@
+//this is a light wrapper around the Google API Client Library for JavaScript (https://github.com/google/google-api-javascript-client)
 /*global gapi*/
 module.exports = {
 	login: function() {
@@ -5,10 +6,10 @@ module.exports = {
 			//get the OAuth2 client library
 			module.exports.loadOAuth2Client().then(() => {
 				//authenticate the user
-				module.exports.authenticate().then(() => {
+				module.exports.authenticate().then((basicProfile) => {
 					//load the Compute API
 					module.exports.loadClient().then(() => {
-						resolve();
+						resolve(basicProfile);
 					});
 				});
 			});
@@ -24,15 +25,27 @@ module.exports = {
 		});
 	},
 	authenticate: function() {
-		return gapi.auth2.getAuthInstance()
-			.signIn({ scope: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/compute https://www.googleapis.com/auth/compute.readonly" })
-			.then(function() { console.log("Sign-in successful"); },
-				function(err) { console.error("Error signing in", err); });
+		return new Promise((resolve, reject) => {
+			gapi.auth2.getAuthInstance()
+				.signIn({ scope: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/compute https://www.googleapis.com/auth/compute.readonly" })
+				.then((userData)=>{ resolve(userData.getBasicProfile()) },
+					function(err) { console.error("Error signing in", err); });
+		});
 	},
 	loadClient: function() {
 		return gapi.client.load("https://content.googleapis.com/discovery/v1/apis/compute/v1/rest")
 			.then(function() { console.log("GAPI client loaded for API"); },
 				function(err) { console.error("Error loading GAPI client for API", err); });
+	},
+	//signs out
+	signOut: function() {
+		return new Promise((resolve, reject) => {
+			var auth2 = gapi.auth2.getAuthInstance();
+			auth2.signOut().then(() => {
+				auth2.disconnect();
+				resolve();
+			});
+		});
 	},
 	//gets the VM instances for the project/zone
 	getVMs: function(project, zone) {
@@ -60,10 +73,10 @@ module.exports = {
 				//not all machine types will be available - it will depend of whether you are on a free trial and other factors - but the quota can be retrieved
 				module.exports.getProjectRegion(project, region).then((projectData) => {
 					//get the CPU quota
-					let cpu_quota = projectData.quotas.filter(item=>item.metric==='CPUS')[0].limit;
+					let cpu_quota = projectData.quotas.filter(item => item.metric === 'CPUS')[0].limit;
 					//add an attribute to all the machine types
-					machineTypes = machineTypes.map(item=>{
-						return Object.assign(item, {available: item.guestCpus <= cpu_quota});
+					machineTypes = machineTypes.map(item => {
+						return Object.assign(item, { available: item.guestCpus <= cpu_quota });
 					});
 					resolve(machineTypes);
 				});

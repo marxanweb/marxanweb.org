@@ -3,10 +3,10 @@ import working from './status-working-28.gif';
 
 class ServerControls extends React.Component {
     startServer(){
-        this.props.startServer(this.props.server);
+        this.props.startServer();
     }
     stopServer(){
-        this.props.stopServer(this.props.server);
+        this.props.stopServer();
     }
 	render() {
 	    let control;
