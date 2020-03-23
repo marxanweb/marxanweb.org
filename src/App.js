@@ -1,6 +1,4 @@
 /*global gapi*/
-/*global fetch*/
-/*global AbortController*/
 import './App.css';
 import React from 'react';
 import ReactTable from 'react-table';
@@ -355,7 +353,7 @@ class App extends React.Component {
     return <div>{local_time}</div>;
   }
   renderLink(row){
-    return (row.original.offline === false) ? <div><a href={'https://app.marxanweb.org/?server=' + row.original.name} target="_app" rel="noopener noreferrer" title='Open hosted service in the Marxan Web app'>link</a></div> : "";  
+    return (row.original.offline === false) ? <div><a href={'https://app.marxanweb.org/?server=' + row.original.name} target="_app" rel="noopener noreferrer" title='Open hosted service in the Marxan Web app'>open</a></div> : "";  
   }
   //gets the machine type for the VM
   getMachineType(vm) {
@@ -363,54 +361,59 @@ class App extends React.Component {
     return (machineTypes.length) ? machineTypes[0] : null;
   }
   //initialises the servers by requesting their capabilities
-  async initialiseServers(marxanServers) {
-    //get all the server capabilities - when all the servers have responded, finalise the marxanServers array
-    await this.getAllServerCapabilities(marxanServers);
-    //sort the servers by the name 
-    this.sortObjectArray(marxanServers, 'name');
-    this.setState({ marxanServers: marxanServers, serversLoaded: true }, () => {
-      return("ServerData retrieved");
+  initialiseServers(marxanServers) {
+    return new Promise((resolve, reject) => {
+      //get all the server capabilities - when all the servers have responded, finalise the marxanServers array
+      this.getAllServerCapabilities(marxanServers).then((server) => {
+        //sort the servers by the name 
+        this.sortObjectArray(marxanServers, 'name');
+        this.setState({ marxanServers: marxanServers, serversLoaded: true }, () => {
+          resolve("ServerData retrieved");
+        });
+      });
     });
   }
   //gets the capabilities of all servers
-  async getAllServerCapabilities(marxanServers) {
+  getAllServerCapabilities(marxanServers) {
+    let promiseArray = [];
     //iterate through the servers and get their capabilities
     for (var i = 0; i < marxanServers.length; ++i) {
-      await this.getServerCapabilities(marxanServers[i]);
+      promiseArray.push(this.getServerCapabilities(marxanServers[i]));
     }
+    //return a promise
+    return Promise.all(promiseArray);
   }
 
   //gets the capabilities of the server by making a request to the getServerData method
-  async getServerCapabilities(server) {
-    var controller = new AbortController();
-    var signal = controller.signal;
-    //get the endpoint for all http/https requests
-    let endpoint = server.protocol + "//" + server.host + ":" + server.port + TORNADO_PATH;
-    //set the default properties for the server - by default the server is offline, has no guest access and CORS is not enabled
-    server = Object.assign(server, { endpoint: endpoint, offline: true, guestUserEnabled: false });
-    //poll the server to make sure tornado is running - this uses fetchJsonp which can catch http errors
-    try{
-      const response = await fetch(endpoint + "getServerData", { timeout: 1000, signal: signal });
-      if (!response.ok) {
-        throw Error("fetch returned a 404 or 500 error: " + response.statusText);
-      }
-      const json = await response.json();
-      if (json.hasOwnProperty('info')) {
-        //set the flags for the server capabilities
-        server = Object.assign(server, { offline: false, machine: json.serverData.MACHINE, client_version: json.serverData.MARXAN_CLIENT_VERSION, server_version: json.serverData.MARXAN_SERVER_VERSION, node: json.serverData.NODE, processor: json.serverData.PROCESSOR, processor_count: json.serverData.PROCESSOR_COUNT, ram: json.serverData.RAM, release: json.serverData.RELEASE, system: json.serverData.SYSTEM, version: json.serverData.VERSION, wdpa_version: json.serverData.WDPA_VERSION, planning_grid_units_limit: Number(json.serverData.PLANNING_GRID_UNITS_LIMIT), disk_space: json.serverData.DISK_FREE_SPACE, shutdowntime:json.serverData.SHUTDOWNTIME });
-        //if the server defines its own name then set it 
-        if (json.serverData.SERVER_NAME !== "") {
-          server = Object.assign(server, { name: json.serverData.SERVER_NAME });
+  getServerCapabilities(server) {
+    return new Promise((resolve, reject) => {
+      //get the endpoint for all http/https requests
+      let endpoint = server.protocol + "//" + server.host + ":" + server.port + TORNADO_PATH;
+      //set the default properties for the server - by default the server is offline, has no guest access and CORS is not enabled
+      server = Object.assign(server, { endpoint: endpoint, offline: true, guestUserEnabled: false });
+      //poll the server to make sure tornado is running - this uses fetchJsonp which can catch http errors
+      fetchJsonp(endpoint + "getServerData", { timeout: 1000 }).then((response) => {
+        return response.json();
+      }).then((json) => {
+        if (json.hasOwnProperty('info')) {
+          //set the flags for the server capabilities
+          server = Object.assign(server, { offline: false, machine: json.serverData.MACHINE, client_version: json.serverData.MARXAN_CLIENT_VERSION, server_version: json.serverData.MARXAN_SERVER_VERSION, node: json.serverData.NODE, processor: json.serverData.PROCESSOR, processor_count: json.serverData.PROCESSOR_COUNT, ram: json.serverData.RAM, release: json.serverData.RELEASE, system: json.serverData.SYSTEM, version: json.serverData.VERSION, wdpa_version: json.serverData.WDPA_VERSION, planning_grid_units_limit: Number(json.serverData.PLANNING_GRID_UNITS_LIMIT), disk_space: json.serverData.DISK_FREE_SPACE, shutdowntime:json.serverData.SHUTDOWNTIME });
+          //if the server defines its own name then set it 
+          if (json.serverData.SERVER_NAME !== "") {
+            server = Object.assign(server, { name: json.serverData.SERVER_NAME });
+          }
+          //if the server defines its own description then set it 
+          if (json.serverData.SERVER_DESCRIPTION !== "") {
+            server = Object.assign(server, { description: json.serverData.SERVER_DESCRIPTION });
+          }
         }
-        //if the server defines its own description then set it 
-        if (json.serverData.SERVER_DESCRIPTION !== "") {
-          server = Object.assign(server, { description: json.serverData.SERVER_DESCRIPTION });
-        }
-      }
-    }catch (error) {
-      controller.abort();
-      console.log("fetch failed with: " + error);
-    }
+        //return the server capabilities
+        resolve(server);
+      }).catch((ex) => {
+        //the server does not exist or did not respond before the timeout - return the default properties
+        resolve(server);
+      });
+    });
   }
   render() {
     let tableCols = [
