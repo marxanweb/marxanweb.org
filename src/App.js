@@ -41,6 +41,8 @@ class App extends React.Component {
         getMachineTypesForProject(GCP_PROJECT, GCP_REGION, GCP_ZONE).then((machineTypes) => {
           //filter the machine types for c2 types (compute-optimised) and n1 (general purpose)
           // machineTypes = machineTypes.filter(mt => (mt.name.substr(0, 3) === 'c2-' || mt.name.substr(0, 3) === 'n1-'));
+          //filter the machine types for n1 (general purpose)
+          machineTypes = machineTypes.filter(mt => (mt.name.substr(0, 3) === 'n1-'));
           //filter the machine types for available ones only
           machineTypes = machineTypes.filter(mt => (mt.available));
           //sort by the description
@@ -340,12 +342,18 @@ class App extends React.Component {
     let machineType = (vm) ? this.getMachineType(vm) : null;
     return <RAMControl machineType={machineType} marxanserver={row.original}/>;
   }
+  renderSpace(row){
+    return <div title={row.original.disk_space} style={{textAlign:'center'}}>{row.original.disk_space}</div>;        
+  }
   renderShutdownTime(row){
     //get the local time
     let local_time = (row.original.shutdowntime !== undefined) ? new Date(Date.parse(row.original.shutdowntime)).toLocaleString() : '';
     //if there is not a shutdown time and the server is online then set to never
     if (local_time === '' && row.original.offline === false) local_time = "Never";
     return <div>{local_time}</div>;
+  }
+  renderLink(row){
+    return (row.original.offline === false) ? <div><a href={'https://app.marxanweb.org/?server=' + row.original.name} target="_app" rel="noopener noreferrer" title='Open hosted service in the Marxan Web app'>open</a></div> : "";  
   }
   //gets the machine type for the VM
   getMachineType(vm) {
@@ -409,49 +417,60 @@ class App extends React.Component {
   }
   render() {
     let tableCols = [
-      { Header: 'Status', accessor: '', width: 100, headerStyle: { 'textAlign': 'left' }, Cell: this.renderStatus.bind(this) },
-      { Header: 'Name', accessor: 'name', width: 200, headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'name') },
-      { Header: 'Host', accessor: 'host', width: 158, headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'host') },
-      { Header: 'Description', accessor: 'description', headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'description') },
-      { Header: 'CPUs', accessor: '', width: 50, headerStyle: { 'textAlign': 'left' }, Cell: this.renderCPUs.bind(this) },
-      { Header: 'RAM', accessor: 'ram', width: 50, headerStyle: { 'textAlign': 'left' }, Cell: this.renderRAM.bind(this) },
-      { Header: 'Space', accessor: 'disk_space', width: 55, headerStyle: { 'textAlign': 'left' } }
+      { Header: 'Status', width: 100, headerStyle: { 'textAlign': 'left' }, Cell: this.renderStatus.bind(this) },
+      { Header: 'Name', width: 200, headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'name') },
+      // { Header: 'Host', width: 158, headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'host') },
+      { Header: 'Description', headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'description') },
+      { Header: 'CPUs', width: 50, headerStyle: { 'textAlign': 'center' }, Cell: this.renderCPUs.bind(this) },
+      { Header: 'RAM', width: 50, headerStyle: { 'textAlign': 'center' }, Cell: this.renderRAM.bind(this) },
+      { Header: 'Space', width: 55, headerStyle: { 'textAlign': 'center' }, Cell: this.renderSpace.bind(this) },
+      { Header: 'Shutdown', width: 135, headerStyle: { 'textAlign': 'left' }, style: { borderRight: '0px' }, Cell: this.renderShutdownTime.bind(this) }
     ];
     //add the controls column to the table if the user is logged in
     if (this.state.loggedIn) tableCols.unshift({ Header: 'VM', accessor: 'controlsEnabled', width: 30, headerStyle: { 'textAlign': 'left' }, style: { borderRight: '0px' }, Cell: this.renderControls.bind(this) });
-    //add the shutdown column if the user has started a vm with a shutdown
-    tableCols.push({ Header: 'Shutdown', accessor: 'shutdowntime', width: 135, headerStyle: { 'textAlign': 'left' }, style: { borderRight: '0px' }, Cell: this.renderShutdownTime.bind(this) });
+    //add the link column if there are any servers online
+    let online_servers = this.state.marxanServers.filter(item=>item.offline===false);
+    if (online_servers.length) tableCols.push({ Header: '', width: 35, headerStyle: { 'textAlign': 'left' }, Cell: this.renderLink.bind(this) });
+    //add a 
     return (
-      <div>
-        <div>Marxan Web</div>
-        <div className={'loginBtn'} onClick={this.toggleLoginState.bind(this)}>
-            <div className={'logodiv'}>
-              <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" viewBox="0 0 48 48" class="_svg"><g><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></g></svg>        
-              <div className={'logintext'} title={this.state.loginTitle}>{this.state.loginText}</div>
-            </div>
+      <div className={'mainbody'}>
+      <div className={'mainbodycontent'}>
+          <div className={'title'}>Marxan Web Systematic Conservation Planning</div>
+          <div className={'bodyText'}>Welcome to the Marxan Web Homepage. &lt;bla bla bla&gt;</div>
+          <div className={'tableContainer'} style={{display: (this.state.serversLoaded) ? 'block' : 'none'}}>
+            <div className={'bodyText'}>To use Marxan Web, you can either use one of the hosted services below or you can install and run it on your own local computer or within your organisation.</div>
+            <div className={'h1'}>Hosted services:</div>
+        		<ReactTable 
+              className={'serversTable'}
+              showPagination={false} 
+              minRows={0}
+              data={this.state.marxanServers}
+              columns={tableCols}
+        		/> 
+        		<div className={'invalidLogin'} style={{display: (this.state.invalidLogin) ? 'block' : 'none'}}>Invalid login credentials - unable to shutdown automatically. Please do it manually.</div>
+        		<div className={'invalidLogin'} style={{display: (this.state.failedToStartServer) ? 'block' : 'none'}}>Failed to start server. Stopping. Try fewer CPUs.</div>
+        		<div className={'invalidLogin'} style={{display: (this.state.failedToSetMachineType) ? 'block' : 'none'}}>Failed to set the machine type. Try a different one.</div>
+      		</div>
+      		<div className={'h1'}>Installation:</div>
+      		<div>For installation instructions, see the <a href='https://docs.marxanweb.org/admin.html' rel="noopener noreferrer" target='_blank'>Administrators Documentation</a></div>
+      		<StartDialog 
+      		  open={this.state.startDialogOpen} 
+      		  machineTypes={this.state.machineTypes} 
+      		  machineType={this.state.machineType} 
+      		  onChangeMachineType={this.onChangeMachineType.bind(this)} 
+      		  setMachineType={this.setMachineType.bind(this)} 
+      		  hideStartDialog={this.hideStartDialog.bind(this)} 
+      		  setTimeout={this.setTimeout.bind(this)} 
+      		  setUserPassword={this.setUserPassword.bind(this)}
+      		  marxanserverendpoint={this.state.marxanserverendpoint}
+      		/>
+          <div className={'loginBtn'} onClick={this.toggleLoginState.bind(this)}>
+              <div className={'logodiv'}>
+                <svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="18px" height="18px" viewBox="0 0 48 48" class="_svg"><g><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></g></svg>        
+                <div className={'logintext'} title={this.state.loginTitle}>{this.state.loginText}</div>
+              </div>
+          </div>
         </div>
-        <div className={'tableContainer'} style={{display: (this.state.serversLoaded) ? 'block' : 'none'}}>
-      		<ReactTable 
-            className={'serversTable'}
-            showPagination={false} 
-            minRows={0}
-            data={this.state.marxanServers}
-            columns={tableCols}
-      		/> 
-      		<div className={'invalidLogin'} style={{display: (this.state.invalidLogin) ? 'block' : 'none'}}>Invalid login credentials - unable to shutdown automatically. Please do it manually.</div>
-      		<div className={'invalidLogin'} style={{display: (this.state.failedToStartServer) ? 'block' : 'none'}}>Failed to start server. Stopping. Try fewer CPUs.</div>
-      		<div className={'invalidLogin'} style={{display: (this.state.failedToSetMachineType) ? 'block' : 'none'}}>Failed to set the machine type. Try a different one.</div>
-    		</div>
-    		<StartDialog 
-    		  open={this.state.startDialogOpen} 
-    		  machineTypes={this.state.machineTypes} 
-    		  machineType={this.state.machineType} 
-    		  onChangeMachineType={this.onChangeMachineType.bind(this)} 
-    		  setMachineType={this.setMachineType.bind(this)} 
-    		  hideStartDialog={this.hideStartDialog.bind(this)} 
-    		  setTimeout={this.setTimeout.bind(this)} 
-    		  setUserPassword={this.setUserPassword.bind(this)}
-    		  marxanserverendpoint={this.state.marxanserverendpoint}/>
       </div>
     );
   }

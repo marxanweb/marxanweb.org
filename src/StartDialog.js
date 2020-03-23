@@ -35,6 +35,7 @@ class StartDialog extends React.Component {
         return (
             <div className='dialog' style={{display: (this.props.open) ? 'block' : 'none'}}>
 			    <div className='dialoginner'>
+			        <div className={'h1'}>Start a hosted service</div>
     			    <div className={'heading'}>Choose a machine type:</div>
     			    <select className={'toppad10'} onChange={this.props.onChangeMachineType.bind(this)} value={this.props.machineType}>{machinetype_options}</select>
     			    <div className={'heading'}>Choose a timeout:</div>
