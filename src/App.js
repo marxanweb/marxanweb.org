@@ -1,4 +1,6 @@
 /*global gapi*/
+/*global fetch*/
+/*global AbortController*/
 import './App.css';
 import React from 'react';
 import ReactTable from 'react-table';
@@ -7,7 +9,6 @@ import CPUControl from './CPUControl';
 import RAMControl from './RAMControl';
 import StartDialog from './StartDialog';
 import 'react-table/react-table.css';
-import fetchJsonp from 'fetch-jsonp';
 import { login, signOut, getVMs, getVM, getMachineTypesForProject } from './computeEngineAPI.js';
 import { isNumber } from './genericFunctions.js';
 
@@ -140,20 +141,18 @@ class App extends React.Component {
     //set the offline property to undefined - this will show the loader
     this.updateMarxanServerStatus(marxanserver, undefined);
     //poll the server to see if it is ready
-    this.timer = setInterval(() => {
-      this.getServerCapabilities(marxanserver).then((_marxanserver) => {
-        //if the _marxanserver is online then update state, stop polling and set it to shutdown 
-        if (!_marxanserver.offline) {
-          this.clearMarxanPolling();
-          //update the state
-          this.updateMarxanServerStatus(marxanserver, false);
-          //authenticate to the marxan-server
-          this.authenticate(marxanserver).then(()=>{
-            //authenticated - now set up the shutdown
-            this.setupShutdown(marxanserver, server);
-          });
-        }
-      });
+    this.timer = setInterval(async () => {
+      let _marxanserver = await this.getServerCapabilities(marxanserver);
+      //if the _marxanserver is online then update state, stop polling and set it to shutdown 
+      if (!_marxanserver.offline) {
+        this.clearMarxanPolling();
+        //update the state
+        this.updateMarxanServerStatus(marxanserver, false);
+        //authenticate to the marxan-server
+        await this.authenticate(marxanserver);
+        //authenticated - now set up the shutdown
+        this.setupShutdown(marxanserver, server);
+      }
     }, 1000);
   }
   clearMarxanPolling() {
@@ -161,21 +160,21 @@ class App extends React.Component {
     this.timeout = undefined;
   }
   //authenticates to the marxan server - if successful sets a cookie to be able to call shutdown
-  authenticate(marxanserver) {
-    return new Promise((resolve, reject) => {
-      fetchJsonp(marxanserver.endpoint + "validateUser?user=" + this.state.username + "&password=" + this.state.password).then((response) => {
-        return response.json();
-      }).then((json) => {
-        if (json.hasOwnProperty('error')) {
-          this.setState({ invalidLogin: true });
-          reject();
-        }
-        resolve();
-      }).catch((ex) => {
+  async authenticate(marxanserver) {
+    try{
+      let response = await fetch(marxanserver.endpoint + "validateUser?user=" + this.state.username + "&password=" + this.state.password);
+      if (!response.ok) {
+        throw Error("fetch returned a 404 or 500 error: " + response.statusText);
+      }
+      const json = await response.json();
+      if (json.hasOwnProperty('error')){
+        alert(json.error);
         this.setState({ invalidLogin: true });
-        reject();
-      });
-    });
+      }
+    }catch(error){
+      this.setState({ invalidLogin: true });
+      console.log("fetch failed with: " + error);
+    }
   }
   //calls shutdown on the marxan server
   setupShutdown(marxanserver, server){
@@ -194,17 +193,23 @@ class App extends React.Component {
     }, miliSecondsTimeout - 1000);
   }
   //makes the API call to shutdown the marxan-server
-  callShutdown(marxanserver, timeout){
-    fetchJsonp(marxanserver.endpoint + "shutdown?delay=" + timeout, { timeout: 1000 }).then((response) => {
-      return response.json();
-    }).then((json) => {
+  async callShutdown(marxanserver, timeout){
+    try{
+      const controller = new AbortController();
+      const signal = controller.signal;   
+      const timeoutId = setTimeout(() => controller.abort(), 1000);
+      const response = await fetch(marxanserver.endpoint + "shutdown?delay=" + timeout, {credentials:"include", signal: signal });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        throw Error("fetch returned a 404 or 500 error: " + response.statusText);
+      }
+      const json = await response.json();
       if (json.hasOwnProperty('error')){
         alert(json.error + '\nUnable to shutdown automatically. Please do it manually.');
       }
-      console.log(json);
-    }).catch((ex) => {
-      console.log(ex);
-    });
+    }catch(error){
+      console.log("fetch failed with: " + error);
+    }
   }
   //get marxan server for the VM
   getMarxanServerForVM(instanceName) {
@@ -300,10 +305,10 @@ class App extends React.Component {
       },
       function(err) { console.error("Execute error", err); });
   }
-  stopVM(marxanserver, server) {
+  async stopVM(marxanserver, server) {
     //update the marxan servers shutdowntime
     this.updateMarxanServerShutdowntime(marxanserver, undefined);
-    this.callShutdown(marxanserver, 0);
+    await this.callShutdown(marxanserver, 0);
     return gapi.client.compute.instances.stop({ "project": GCP_PROJECT, "zone": GCP_ZONE, 'instance': server.name }).then((response) => {
         console.log("Stop requested");
         //poll the server
@@ -374,46 +379,46 @@ class App extends React.Component {
     });
   }
   //gets the capabilities of all servers
-  getAllServerCapabilities(marxanServers) {
-    let promiseArray = [];
-    //iterate through the servers and get their capabilities
-    for (var i = 0; i < marxanServers.length; ++i) {
-      promiseArray.push(this.getServerCapabilities(marxanServers[i]));
-    }
-    //return a promise
-    return Promise.all(promiseArray);
+  async getAllServerCapabilities(marxanServers) {
+    let promises = await marxanServers.map(async server=>{
+      await this.getServerCapabilities(server);
+    });
+    await Promise.all(promises);
   }
 
   //gets the capabilities of the server by making a request to the getServerData method
-  getServerCapabilities(server) {
-    return new Promise((resolve, reject) => {
-      //get the endpoint for all http/https requests
-      let endpoint = server.protocol + "//" + server.host + ":" + server.port + TORNADO_PATH;
-      //set the default properties for the server - by default the server is offline, has no guest access and CORS is not enabled
-      server = Object.assign(server, { endpoint: endpoint, offline: true, guestUserEnabled: false });
-      //poll the server to make sure tornado is running - this uses fetchJsonp which can catch http errors
-      fetchJsonp(endpoint + "getServerData", { timeout: 1000 }).then((response) => {
-        return response.json();
-      }).then((json) => {
-        if (json.hasOwnProperty('info')) {
-          //set the flags for the server capabilities
-          server = Object.assign(server, { offline: false, machine: json.serverData.MACHINE, client_version: json.serverData.MARXAN_CLIENT_VERSION, server_version: json.serverData.MARXAN_SERVER_VERSION, node: json.serverData.NODE, processor: json.serverData.PROCESSOR, processor_count: json.serverData.PROCESSOR_COUNT, ram: json.serverData.RAM, release: json.serverData.RELEASE, system: json.serverData.SYSTEM, version: json.serverData.VERSION, wdpa_version: json.serverData.WDPA_VERSION, planning_grid_units_limit: Number(json.serverData.PLANNING_GRID_UNITS_LIMIT), disk_space: json.serverData.DISK_FREE_SPACE, shutdowntime:json.serverData.SHUTDOWNTIME });
-          //if the server defines its own name then set it 
-          if (json.serverData.SERVER_NAME !== "") {
-            server = Object.assign(server, { name: json.serverData.SERVER_NAME });
-          }
-          //if the server defines its own description then set it 
-          if (json.serverData.SERVER_DESCRIPTION !== "") {
-            server = Object.assign(server, { description: json.serverData.SERVER_DESCRIPTION });
-          }
+  async getServerCapabilities(server) {
+    //get the endpoint for all http/https requests
+    let endpoint = server.protocol + "//" + server.host + ":" + server.port + TORNADO_PATH;
+    //set the default properties for the server - by default the server is offline, has no guest access and CORS is not enabled
+    server = Object.assign(server, { endpoint: endpoint, offline: true, guestUserEnabled: false });
+    //poll the server to make sure tornado is running
+    try{
+      const controller = new AbortController();
+      const signal = controller.signal;   
+      const timeoutId = setTimeout(() => controller.abort(), 1000);
+      const response = await fetch(endpoint + "getServerData", { signal });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        throw Error("fetch returned a 404 or 500 error: " + response.statusText);
+      }
+      const json = await response.json();
+      if (json.hasOwnProperty('info')) {
+        //set the flags for the server capabilities
+        server = Object.assign(server, { offline: false, machine: json.serverData.MACHINE, client_version: json.serverData.MARXAN_CLIENT_VERSION, server_version: json.serverData.MARXAN_SERVER_VERSION, node: json.serverData.NODE, processor: json.serverData.PROCESSOR, processor_count: json.serverData.PROCESSOR_COUNT, ram: json.serverData.RAM, release: json.serverData.RELEASE, system: json.serverData.SYSTEM, version: json.serverData.VERSION, wdpa_version: json.serverData.WDPA_VERSION, planning_grid_units_limit: Number(json.serverData.PLANNING_GRID_UNITS_LIMIT), disk_space: json.serverData.DISK_FREE_SPACE, shutdowntime:json.serverData.SHUTDOWNTIME });
+        //if the server defines its own name then set it 
+        if (json.serverData.SERVER_NAME !== "") {
+          server = Object.assign(server, { name: json.serverData.SERVER_NAME });
         }
-        //return the server capabilities
-        resolve(server);
-      }).catch((ex) => {
-        //the server does not exist or did not respond before the timeout - return the default properties
-        resolve(server);
-      });
-    });
+        //if the server defines its own description then set it 
+        if (json.serverData.SERVER_DESCRIPTION !== "") {
+          server = Object.assign(server, { description: json.serverData.SERVER_DESCRIPTION });
+        }
+      }
+    }catch(error){
+      console.log("fetch failed with: " + error);
+    }
+    return server;
   }
   render() {
     let tableCols = [
