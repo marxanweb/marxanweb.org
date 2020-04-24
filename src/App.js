@@ -422,7 +422,7 @@ class App extends React.Component {
   }
   render() {
     let tableCols = [
-      { Header: 'Status', width: 100, headerStyle: { 'textAlign': 'left' }, Cell: this.renderStatus.bind(this) },
+      { Header: 'marxan-server', width: 100, headerStyle: { 'textAlign': 'left' }, Cell: this.renderStatus.bind(this) },
       { Header: 'Name', width: 200, headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'name') },
       // { Header: 'Host', width: 158, headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'host') },
       { Header: 'Description', headerStyle: { 'textAlign': 'left' }, Cell: this.renderWithTitle.bind(this, 'description') },
