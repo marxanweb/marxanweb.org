@@ -202,7 +202,7 @@ class App extends React.Component {
     try{
       const controller = new AbortController();
       const signal = controller.signal;   
-      const timeoutId = setTimeout(() => controller.abort(), 1000);
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
       const response = await fetch(marxanserver.endpoint + "shutdown?delay=" + timeout, {credentials:"include", signal: signal });
       clearTimeout(timeoutId);
       if (!response.ok) {
@@ -401,7 +401,7 @@ class App extends React.Component {
     try{
       const controller = new AbortController();
       const signal = controller.signal;   
-      const timeoutId = setTimeout(() => controller.abort(), 1000);
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
       const response = await fetch(endpoint + "getServerData", { signal });
       clearTimeout(timeoutId);
       if (!response.ok) {
