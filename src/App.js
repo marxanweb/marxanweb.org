@@ -26,6 +26,7 @@ class App extends React.Component {
     super(props);
     this.state = { loginText: "Sign in", loginTitle: 'Click to sign in', marxanServers: [], clickedServer: {}, loggedIn: false, vms: [], serversLoaded: false, machineTypes: [], startDialogOpen: false, machineType: '', timeout: 60, invalidLogin: false, failedToStartServer: false, failedToSetMachineType: false };
     this.initialiseServers(window.MARXAN_SERVERS);
+    this.authenticated = false;
   }
   toggleLoginState() {
     if (this.state.loggedIn){
@@ -149,9 +150,11 @@ class App extends React.Component {
         //update the state
         this.updateMarxanServerStatus(marxanserver, false);
         //authenticate to the marxan-server
-        await this.authenticate(marxanserver);
-        //authenticated - now set up the shutdown
-        this.setupShutdown(marxanserver, server);
+        if (!this.authenticated) {
+          await this.authenticate(marxanserver);
+          //authenticated - now set up the shutdown
+          await this.setupShutdown(marxanserver, server);
+        }
       }
     }, 1000);
   }
@@ -170,6 +173,8 @@ class App extends React.Component {
       if (json.hasOwnProperty('error')){
         alert(json.error);
         this.setState({ invalidLogin: true });
+      }else{
+        this.authenticated = true;
       }
     }catch(error){
       this.setState({ invalidLogin: true });
@@ -177,7 +182,7 @@ class App extends React.Component {
     }
   }
   //calls shutdown on the marxan server
-  setupShutdown(marxanserver, server){
+  async setupShutdown(marxanserver, server){
     //get the time now
     let d = new Date();
     //get the shutdown time
@@ -186,7 +191,7 @@ class App extends React.Component {
     //update the marxan servers shutdowntime
     this.updateMarxanServerShutdowntime(marxanserver, shutdowntime);
     //set the shutdown timer
-    this.callShutdown(marxanserver, this.state.timeout);
+    await this.callShutdown(marxanserver, this.state.timeout);
     //configure a callback to start polling the server just before it is stopped
     setTimeout(() => {
       this.pollServer(server);
