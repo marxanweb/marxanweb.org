@@ -13,6 +13,7 @@ import { login, signOut, getVMs, getVM, getMachineTypesForProject } from './comp
 import { isNumber } from './genericFunctions.js';
 
 //CONSTANTS
+let MARXAN_REGISTRY = 'https://marxanweb.github.io/general/registry/marxan.json';
 let TORNADO_PATH = "/marxan-server/";
 let GCP_PROJECT = "marxan-web";
 let GCP_REGION = "us-central1";
@@ -25,8 +26,13 @@ class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = { loginText: "Sign in", loginTitle: 'Click to sign in', marxanServers: [], clickedServer: {}, loggedIn: false, vms: [], serversLoaded: false, machineTypes: [], startDialogOpen: false, machineType: '', timeout: 60, invalidLogin: false, failedToStartServer: false, failedToSetMachineType: false };
-    this.initialiseServers(window.MARXAN_SERVERS);
-    this.authenticated = false;
+    fetch(MARXAN_REGISTRY)
+    .then(response => {
+      response.json().then(registryData => {
+        this.initialiseServers(registryData.MARXAN_SERVERS);
+        this.authenticated = false;
+      });
+    });
   }
   toggleLoginState() {
     if (this.state.loggedIn){
