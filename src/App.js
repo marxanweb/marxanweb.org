@@ -452,7 +452,7 @@ class App extends React.Component {
       <div className={'mainbody'}>
       <div className={'mainbodycontent'}>
           <div className={'title'}>Marxan Web Systematic Conservation Planning</div>
-          <div className={'bodyText'}>Welcome to the Marxan Web Homepage. &lt;bla bla bla&gt;</div>
+          <div className={'bodyText'}>Welcome to the Marxan Web Homepage.</div>
           <div className={'tableContainer'} style={{display: (this.state.serversLoaded) ? 'block' : 'none'}}>
             <div className={'bodyText'}>To use Marxan Web, you can either use one of the hosted services below or you can install and run it on your own local computer or within your organisation.</div>
             <div className={'h1'}>Hosted services:</div>

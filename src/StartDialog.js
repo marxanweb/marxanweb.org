@@ -1,6 +1,6 @@
 import React from 'react';
 
-let TIMEOUTS = [{text: '2 minutes', minutes: "2"},{ text: '1 hour', minutes: "60" }, { text: '2 hours', minutes: "120" }, { text: '3 hours', minutes: "180" }, { text: '4 hours', minutes: "240" }, { text: '5 hours', minutes: "300" }, { text: '6 hours', minutes: "360" }, { text: '7 hours', minutes: "420" }, { text: '8 hours', minutes: "480" }];
+let TIMEOUTS = [{ text: '1 hour', minutes: "60" }, { text: '2 hours', minutes: "120" }, { text: '3 hours', minutes: "180" }, { text: '4 hours', minutes: "240" }, { text: '5 hours', minutes: "300" }, { text: '6 hours', minutes: "360" }, { text: '7 hours', minutes: "420" }, { text: '8 hours', minutes: "480" }];
 
 class StartDialog extends React.Component {
     constructor(props) {
@@ -35,7 +35,7 @@ class StartDialog extends React.Component {
         return (
             <div className='dialog' style={{display: (this.props.open) ? 'block' : 'none'}}>
 			    <div className='dialoginner'>
-			        <div className={'h1'}>Start a hosted service</div>
+			        <div className={'dialogTitle'}>Start a hosted service</div>
     			    <div className={'heading'}>Choose a machine type:</div>
     			    <select className={'toppad10'} onChange={this.props.onChangeMachineType.bind(this)} value={this.props.machineType}>{machinetype_options}</select>
     			    <div className={'heading'}>Choose a timeout:</div>
